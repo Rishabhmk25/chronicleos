@@ -1,0 +1,91 @@
+import { useEffect, useState } from "react"
+import axios from "axios"
+import SessionCard from "./SessionCard"
+
+interface Page { url: string; title: string; timestamp: number; domain: string }
+interface Session {
+  id: number; label: string; start_time: number; end_time: number
+  page_count: number; cluster_id: number; pages: Page[]
+}
+
+export default function Timeline() {
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [clustering, setClustering] = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+
+  const load = () => {
+    setLoading(true)
+    setError(null)
+    axios.get("http://localhost:8000/sessions")
+      .then(r => setSessions(r.data))
+      .catch(e => setError(e?.message || "Failed to load sessions"))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const triggerClustering = async () => {
+    setClustering(true)
+    try {
+      await axios.post("http://localhost:8000/cluster")
+      await new Promise(r => setTimeout(r, 8000))
+      load()
+    } catch (e: any) {
+      setError(e?.message || "Clustering failed")
+    } finally {
+      setClustering(false)
+    }
+  }
+
+  const totalPages = sessions.reduce((acc, s) => acc + (s.pages?.length || 0), 0)
+
+  return (
+    <div>
+      <div className="section-header">
+        <div>
+          <h2 className="section-title">Timeline</h2>
+          <p className="section-subtitle">
+            {sessions.length > 0
+              ? `${sessions.length} sessions · ${totalPages} pages captured`
+              : "Cluster your browsing into knowledge sessions"}
+          </p>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={triggerClustering}
+          disabled={clustering || loading}
+          style={{ flexShrink: 0 }}
+        >
+          {clustering
+            ? <><span className="spinner" style={{ borderTopColor: "#fff" }} /> Clustering...</>
+            : "◈ Cluster Sessions"
+          }
+        </button>
+      </div>
+
+      {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
+
+      {loading ? (
+        <div className="loading-row">
+          <span className="spinner" /> Loading sessions...
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">◈</div>
+          <div className="empty-state-title">No sessions yet</div>
+          <div className="empty-state-desc">
+            Make sure the backend is running and you've visited some pages.<br />
+            Then click <strong style={{ color: "var(--crimson)" }}>Cluster Sessions</strong> to group them into topics.
+          </div>
+        </div>
+      ) : (
+        <div className="session-grid">
+          {sessions.map(session => (
+            <SessionCard key={session.id} session={session} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

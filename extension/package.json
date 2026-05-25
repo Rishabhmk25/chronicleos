@@ -1,0 +1,19 @@
+{
+  "name": "chronicleos-extension",
+  "displayName": "ChronicleOS",
+  "version": "0.0.1",
+  "description": "Personal semantic memory engine",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build"
+  },
+  "dependencies": {
+    "plasmo": "0.89.2",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "manifest": {
+    "permissions": ["tabs", "activeTab", "scripting", "storage"],
+    "host_permissions": ["http://localhost:8000/*", "<all_urls>"]
+  }
+}
