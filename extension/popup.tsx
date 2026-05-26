@@ -198,7 +198,7 @@ export default function Popup() {
         )}
       </div>
 
-          <a href="http://localhost:5173" target="_blank" rel="noreferrer" className="btn">
+          <a href="https://chronicalos.vercel.app/" target="_blank" rel="noreferrer" className="btn">
             Open Dashboard ↗
           </a>
           <button 

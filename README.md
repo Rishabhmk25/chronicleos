@@ -9,7 +9,7 @@ ChronicleOS is an advanced, production-ready "Memory OS" that passive-captures, 
 ```mermaid
 graph TD
     Ext[Chrome Extension] -->|Queue & Batch Sync| API[FastAPI Backend]
-    API -->|Dialect Dispatcher| DB[(Supabase PostgreSQL / SQLite)]
+    API -->|Dialect Dispatcher| DB[(Neon PostgreSQL / SQLite)]
     DB -->|pgvector / SQLiteVector| DB
     API -->|NetworkX Graph Builder| Graph[graph.json]
     API -->|Synthesizer| LLM[Groq Llama-3.1 RAG]
@@ -28,12 +28,12 @@ graph TD
 - **Single Sign-On (SSO) Auto-Sync**: Automatically detects the dashboard authentication state from active tabs and signs into the extension popup without manual input.
 
 ### Backend (FastAPI + SQLAlchemy)
-- **Dynamic Database Dialect**: Connects to **Supabase (PostgreSQL)** when `DATABASE_URL` is set, dynamically enabling the `vector` extension. Falls back to a local **SQLite** database for completely offline development.
+- **Dynamic Database Dialect**: Connects to **Neon Serverless Postgres** (or any PostgreSQL instance) when `DATABASE_URL` is set, dynamically enabling the `vector` extension. Falls back to a local **SQLite** database for completely offline development.
 - **pgvector Vector Database**: ChromaDB has been completely removed. Text embeddings (768-dimensional float arrays from Nomic AI) are stored natively inside the relational `captures` table.
   - *PostgreSQL*: Uses native `pgvector.sqlalchemy.Vector(768)` fields for fast database-level cosine similarity queries (`cosine_distance`).
   - *SQLite Fallback*: Automatically serializes embeddings to a JSON-mapped `SQLiteVector` text column and applies a high-fidelity brute-force cosine match in Python using `numpy`.
 - **Stateless JWT Multi-Tenancy**: Secure `bcrypt` password hashing (bypassing passlib limits) and strict `user_id` context isolation. No user's semantic memory can contaminate another's.
-- **Automated Unsupervised Clustering**: DBSCAN algorithm merges temporal and semantic distance matrices to group related pages into cohesive "Sessions" (labeled via Groq Llama-3).
+- **Automated Unsupervised Clustering**: DBSCAN algorithm merges temporal and semantic distance matrices to group related pages into cohesive "Sessions" (labeled via Groq Llama-3) using raw SQL bulk updates to prevent ORM identity map conflicts.
 - **Graph RAG (NetworkX)**: An asynchronous pipeline extracts entities and relationships in the background, building a multi-hop knowledge graph.
 
 ### React Dashboard (Vite + TailwindCSS)
@@ -48,10 +48,10 @@ graph TD
 
 ## 2. Cloud Deployments Setup
 
-### Backend Deployment (Render)
-The backend is prepared for one-click deployment on **Render** (supporting long-running async background tasks like Graph extraction and clustering).
-- Deployment configuration is handled by [render.yaml](file:///d:/ML/chronicalos/chronicleos/backend/render.yaml).
-- Requires setting environment variables on Render: `GROQ_API_KEY`, `NOMIC_API_KEY`, `DATABASE_URL` (your Supabase URL), and `JWT_SECRET_KEY`.
+### Backend Deployment (Render or Fly.io)
+The backend is prepared for one-click deployment on **Render** (using `render.yaml`) or **Fly.io** (using `Procfile` and `fly.toml`).
+- Requires setting environment variables: `GROQ_API_KEY`, `NOMIC_API_KEY`, `DATABASE_URL` (your Neon URL), and `JWT_SECRET_KEY`.
+- *Note:* Due to Render's lack of outbound IPv6 support on the free tier, we strongly recommend **Neon Serverless Postgres** for the database as it provides native IPv4 connection strings with built-in `pgvector` support.
 
 ### Frontend Dashboard Deployment (Vercel)
 The dashboard React SPA is ready for static deployment on **Vercel**.
