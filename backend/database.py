@@ -1,11 +1,56 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, ForeignKey, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+import json
+import os
 import sqlite3
+from dotenv import load_dotenv
 
-DATABASE_URL = "sqlite:///./chronicle.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chronicle.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+is_postgres = DATABASE_URL.startswith("postgresql")
+
+# SQLiteVector maps a Python list/tuple to a serialized JSON string in a SQLite Text column.
+class SQLiteVector(TypeDecorator := type('TypeDecorator', (object,), {})):
+    # Since TypeDecorator is from sqlalchemy, let's import it properly
+    pass
+
+# We will use SQLAlchemy's native TypeDecorator
+from sqlalchemy.types import TypeDecorator
+
+class SQLiteVector(TypeDecorator):
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if isinstance(value, tuple):
+                value = list(value)
+            return json.dumps(value)
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return None
+
+# Define VectorType dynamically based on engine dialect
+if is_postgres:
+    from pgvector.sqlalchemy import Vector
+    VectorType = Vector(768)
+else:
+    VectorType = SQLiteVector()
+
+if is_postgres:
+    engine = create_engine(DATABASE_URL)
+else:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -34,6 +79,7 @@ class PageCapture(Base):
     cluster_id = Column(Integer, nullable=True, index=True)
     cluster_label = Column(String, nullable=True)
     embedded = Column(Integer, default=0)       # 0 = not yet embedded
+    embedding = Column(VectorType, nullable=True) # Direct pgvector / SQLite vector storage
     created_at = Column(DateTime, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
@@ -52,26 +98,34 @@ class BrowsingSession(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 def init_db():
+    if is_postgres:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
+
     Base.metadata.create_all(bind=engine)
     
-    # Simple manual migration for SQLite to add user_id to existing tables
-    try:
-        with sqlite3.connect("./chronicle.db") as conn:
-            cursor = conn.cursor()
-            # Check if user_id exists in captures
-            cursor.execute("PRAGMA table_info(captures)")
-            columns = [info[1] for info in cursor.fetchall()]
-            if "user_id" not in columns:
-                cursor.execute("ALTER TABLE captures ADD COLUMN user_id INTEGER REFERENCES users(id)")
-            
-            # Check if user_id exists in sessions
-            cursor.execute("PRAGMA table_info(sessions)")
-            columns = [info[1] for info in cursor.fetchall()]
-            if "user_id" not in columns:
-                cursor.execute("ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id)")
-            conn.commit()
-    except Exception as e:
-        print("Migration error:", e)
+    # Simple manual migration for SQLite
+    if not is_postgres:
+        try:
+            with sqlite3.connect("./chronicle.db") as conn:
+                cursor = conn.cursor()
+                # Check if user_id exists in captures
+                cursor.execute("PRAGMA table_info(captures)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if "user_id" not in columns:
+                    cursor.execute("ALTER TABLE captures ADD COLUMN user_id INTEGER REFERENCES users(id)")
+                if "embedding" not in columns:
+                    cursor.execute("ALTER TABLE captures ADD COLUMN embedding TEXT")
+                
+                # Check if user_id exists in sessions
+                cursor.execute("PRAGMA table_info(sessions)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if "user_id" not in columns:
+                    cursor.execute("ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id)")
+                conn.commit()
+        except Exception as e:
+            print("Migration error:", e)
 
 def get_db():
     db = SessionLocal()

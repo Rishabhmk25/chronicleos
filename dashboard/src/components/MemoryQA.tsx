@@ -24,7 +24,7 @@ export default function MemoryQA() {
   const [sessions, setSessions] = useState<Session[]>([])
 
   useEffect(() => {
-    axios.get("http://localhost:8000/sessions")
+    axios.get("/sessions")
       .then(r => setSessions(r.data))
       .catch(() => {})
   }, [])
@@ -48,8 +48,8 @@ export default function MemoryQA() {
     weekly: [],
   }
 
-  const submit = async (overrideQuery?: string) => {
-    const q = overrideQuery || query;
+  const submit = async (overrideQuery?: any) => {
+    const q = (typeof overrideQuery === "string") ? overrideQuery : query;
     if (mode !== "weekly" && !q.trim()) return
     setLoading(true)
     setResult(null)
@@ -57,11 +57,11 @@ export default function MemoryQA() {
     try {
       let r;
       if (mode === "ask") {
-        r = await axios.get(`http://localhost:8000/ask?q=${encodeURIComponent(q)}&level=${detailLevel}`)
+        r = await axios.get(`/ask?q=${encodeURIComponent(q)}&level=${detailLevel}`)
       } else if (mode === "reconstruct") {
-        r = await axios.get(`http://localhost:8000/reconstruct?topic=${encodeURIComponent(q)}`)
+        r = await axios.get(`/reconstruct?topic=${encodeURIComponent(q)}`)
       } else {
-        r = await axios.get("http://localhost:8000/weekly")
+        r = await axios.get("/weekly")
       }
 
       const data = r.data

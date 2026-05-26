@@ -25,10 +25,13 @@ def save_graph(g: nx.Graph):
     with open(GRAPH_FILE, "w") as f:
         json.dump(data, f)
 
-def extract_entities_and_relationships(text: str, url: str):
+def extract_entities_and_relationships(text: str, url: str, groq_key: str | None = None):
     """Uses Groq to extract a knowledge graph from text."""
     if not text:
         return False
+        
+    active_key = groq_key or os.getenv("GROQ_API_KEY")
+    client = Groq(api_key=active_key)
         
     prompt = f"""You are a Knowledge Graph extraction engine.
 Extract core entities and their relationships from the text below.
@@ -44,7 +47,7 @@ Text:
 {text[:3000]}
 """
     try:
-        response = groq_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},

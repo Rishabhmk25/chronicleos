@@ -8,15 +8,65 @@ export default function Popup() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
 
+  const [backendUrl, setBackendUrl] = useState("http://localhost:8000")
+
   useEffect(() => {
-    chrome.storage.local.get(["cos_token"], (res) => {
+    chrome.storage.local.get(["cos_token", "cos_backend_url"], (res) => {
       if (res.cos_token) setToken(res.cos_token)
+      if (res.cos_backend_url) setBackendUrl(res.cos_backend_url)
     })
   }, [])
 
+  // Auto-sync token from active dashboard tab if unauthenticated
+  useEffect(() => {
+    if (token) return
+
+    chrome.tabs.query({}, async (tabs) => {
+      for (const tab of tabs) {
+        if (!tab.id || !tab.url) continue
+        const isDashboard = tab.url.includes("localhost:5173") || 
+                            tab.url.includes("localhost:5174") || 
+                            tab.url.includes("vercel.app")
+        if (isDashboard) {
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: () => {
+                return {
+                  token: localStorage.getItem("cos_token"),
+                  username: localStorage.getItem("cos_username"),
+                  groqKey: localStorage.getItem("cos_groq_api_key"),
+                  nomicKey: localStorage.getItem("cos_nomic_api_key"),
+                  backendUrl: localStorage.getItem("cos_backend_url"),
+                }
+              }
+            })
+            if (results && results[0] && results[0].result) {
+              const { token: dashToken, groqKey, nomicKey, backendUrl: dashBackendUrl } = results[0].result
+              const updates: Record<string, string> = {}
+              if (dashToken) updates.cos_token = dashToken
+              if (groqKey) updates.cos_groq_api_key = groqKey
+              if (nomicKey) updates.cos_nomic_api_key = nomicKey
+              if (dashBackendUrl) updates.cos_backend_url = dashBackendUrl
+              
+              if (Object.keys(updates).length > 0) {
+                await chrome.storage.local.set(updates)
+                if (dashToken) setToken(dashToken)
+                if (dashBackendUrl) setBackendUrl(dashBackendUrl)
+                break
+              }
+            }
+          } catch (e) {
+            console.log("Auto-sync script failed:", e)
+          }
+        }
+      }
+    })
+  }, [token])
+
   useEffect(() => {
     if (!token) return
-    fetch("http://localhost:8000/status", {
+    fetch(`${backendUrl}/status`, {
       headers: { "Authorization": `Bearer ${token}` }
     })
       .then(r => {
@@ -32,7 +82,7 @@ export default function Popup() {
         setCount(data.total_captures)
       })
       .catch(() => setStatus("disconnected"))
-  }, [token])
+  }, [token, backendUrl])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,7 +92,7 @@ export default function Popup() {
     formData.append("password", password)
     
     try {
-      const res = await fetch("http://localhost:8000/login", {
+      const res = await fetch(`${backendUrl}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData

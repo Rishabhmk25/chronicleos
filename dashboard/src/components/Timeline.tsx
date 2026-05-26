@@ -17,7 +17,7 @@ export default function Timeline() {
   const load = () => {
     setLoading(true)
     setError(null)
-    axios.get("http://localhost:8000/sessions")
+    axios.get("/sessions")
       .then(r => setSessions(r.data))
       .catch(e => setError(e?.message || "Failed to load sessions"))
       .finally(() => setLoading(false))
@@ -28,7 +28,7 @@ export default function Timeline() {
   const triggerClustering = async () => {
     setClustering(true)
     try {
-      await axios.post("http://localhost:8000/cluster")
+      await axios.post("/cluster")
       await new Promise(r => setTimeout(r, 8000))
       load()
     } catch (e: any) {

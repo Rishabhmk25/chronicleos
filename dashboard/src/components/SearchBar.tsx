@@ -28,7 +28,7 @@ export default function SearchBar() {
   const [sessions, setSessions] = useState<Session[]>([])
 
   useEffect(() => {
-    axios.get("http://localhost:8000/sessions")
+    axios.get("/sessions")
       .then(r => setSessions(r.data))
       .catch(() => {})
   }, [])
@@ -42,17 +42,17 @@ export default function SearchBar() {
         "neural architecture design",
       ]
 
-  const search = async (q?: string) => {
-    const searchQuery = q ?? query
+  const search = async (q?: any) => {
+    const searchQuery = (typeof q === "string") ? q : query
     if (!searchQuery.trim()) return
-    if (q) setQuery(q)
+    if (typeof q === "string") setQuery(q)
     setLoading(true)
     setSearched(true)
     setError(null)
     setElapsed(null)
     const t0 = performance.now()
     try {
-      const r = await axios.get(`http://localhost:8000/search?q=${encodeURIComponent(searchQuery)}`)
+      const r = await axios.get(`/search?q=${encodeURIComponent(searchQuery)}`)
       setResults(r.data.results || [])
       setElapsed(Math.round(performance.now() - t0))
     } catch (e: any) {
@@ -65,7 +65,7 @@ export default function SearchBar() {
 
   const deleteCapture = async (id: number) => {
     try {
-      await axios.delete(`http://localhost:8000/captures/${id}`)
+      await axios.delete(`/captures/${id}`)
       setResults(results.filter(r => r.id !== id))
     } catch (e) {
       alert("Failed to delete memory")

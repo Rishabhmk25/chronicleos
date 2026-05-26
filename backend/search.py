@@ -1,15 +1,44 @@
 """
 Hybrid Search Engine for ChronicleOS.
-Uses EXACT brute-force cosine similarity (not HNSW approximate search)
-to guarantee 100% deterministic results for small collections.
+Uses pgvector on PostgreSQL / Supabase, and exact brute-force cosine similarity on SQLite
+to guarantee 100% deterministic, ultra-fast results.
 """
 
 import re
 import numpy as np
 from rank_bm25 import BM25Okapi
 from functools import lru_cache
-from embedder import collection, get_query_embedding
-from database import PageCapture, SessionLocal
+from embedder import get_query_embedding, build_document_text
+from database import PageCapture, SessionLocal, is_postgres
+
+def safe_int(val, default=-1) -> int:
+    if val is None:
+        return default
+    if isinstance(val, int):
+        return val
+    if isinstance(val, bytes):
+        import struct
+        if len(val) == 8:
+            try:
+                q_val = struct.unpack('q', val)[0]
+                if -1000 <= q_val <= 10000000:
+                    return q_val
+            except Exception:
+                pass
+            try:
+                d_val = struct.unpack('d', val)[0]
+                if -1000.0 <= d_val <= 10000000.0:
+                    return int(round(d_val))
+            except Exception:
+                pass
+        try:
+            return int(val.decode('utf-8', errors='ignore'))
+        except ValueError:
+            return default
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
 
 # Stop words to filter from queries
 STOP_WORDS = {
@@ -39,35 +68,80 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(dot / norm)
 
 
-def exact_vector_search(query: str, user_id: int, n_results: int = 30) -> list[dict]:
+def exact_vector_search(query: str, user_id: int, n_results: int = 30, nomic_key: str | None = None) -> list[dict]:
     """
-    Brute-force exact cosine similarity search.
-    Loads ALL embeddings from ChromaDB and computes exact similarity.
-    For collections < 5000 docs, this is instant and 100% deterministic.
+    Direct pgvector database query if running on PostgreSQL/Supabase.
+    Otherwise, fallback to brute-force exact cosine similarity search over SQLite database records.
     """
     # Get query embedding (cached via lru_cache)
-    query_emb = np.array(get_query_embedding(query))
+    query_emb = get_query_embedding(query, nomic_key=nomic_key)
+    query_emb_list = list(query_emb)
 
-    # Load ALL documents and embeddings for the specific user from ChromaDB
-    all_data = collection.get(where={"user_id": user_id}, include=["embeddings", "documents", "metadatas"])
+    db = SessionLocal()
+    try:
+        if is_postgres:
+            # PostgreSQL native pgvector cosine similarity search.
+            # <=> operator is represented by .cosine_distance() in pgvector.sqlalchemy
+            captures = db.query(PageCapture).filter(
+                PageCapture.user_id == user_id,
+                PageCapture.embedding != None
+            ).order_by(
+                PageCapture.embedding.cosine_distance(query_emb_list)
+            ).limit(n_results).all()
 
-    if not all_data["ids"]:
-        return []
+            hits = []
+            query_emb_np = np.array(query_emb_list)
+            for c in captures:
+                score = cosine_similarity(query_emb_np, np.array(c.embedding))
+                hits.append({
+                    "id": c.id,
+                    "document": build_document_text(c),
+                    "metadata": {
+                        "url": c.url,
+                        "title": c.title,
+                        "domain": c.domain or "",
+                        "timestamp": float(c.timestamp),
+                        "cluster_id": safe_int(c.cluster_id),
+                        "user_id": safe_int(c.user_id),
+                    },
+                    "vector_score": score,
+                })
+            # Ensure hits are sorted descending by vector_score
+            hits.sort(key=lambda x: x["vector_score"], reverse=True)
+            return hits
+        else:
+            # SQLite fallback: load all user captures and calculate similarity in Python
+            captures = db.query(PageCapture).filter(
+                PageCapture.user_id == user_id,
+                PageCapture.embedding != None
+            ).all()
 
-    hits = []
-    for i, doc_id in enumerate(all_data["ids"]):
-        doc_emb = np.array(all_data["embeddings"][i])
-        score = cosine_similarity(query_emb, doc_emb)
-        hits.append({
-            "id": int(doc_id),
-            "document": all_data["documents"][i],
-            "metadata": all_data["metadatas"][i],
-            "vector_score": score,
-        })
+            if not captures:
+                return []
 
-    # Sort by exact cosine similarity (descending) and return top N
-    hits.sort(key=lambda x: x["vector_score"], reverse=True)
-    return hits[:n_results]
+            hits = []
+            query_emb_np = np.array(query_emb_list)
+            for c in captures:
+                doc_emb = np.array(c.embedding)
+                score = cosine_similarity(query_emb_np, doc_emb)
+                hits.append({
+                    "id": c.id,
+                    "document": build_document_text(c),
+                    "metadata": {
+                        "url": c.url,
+                        "title": c.title,
+                        "domain": c.domain or "",
+                        "timestamp": float(c.timestamp),
+                        "cluster_id": safe_int(c.cluster_id),
+                        "user_id": safe_int(c.user_id),
+                    },
+                    "vector_score": score,
+                })
+
+            hits.sort(key=lambda x: x["vector_score"], reverse=True)
+            return hits[:n_results]
+    finally:
+        db.close()
 
 
 def bm25_rerank(query: str, candidates: list[dict]) -> list[dict]:
@@ -103,22 +177,22 @@ def bm25_rerank(query: str, candidates: list[dict]) -> list[dict]:
     return sorted(candidates, key=lambda x: x["hybrid_score"], reverse=True)
 
 
-def search(query: str, user_id: int, top_k: int = 10) -> list[dict]:
+def search(query: str, user_id: int, top_k: int = 10, nomic_key: str | None = None) -> list[dict]:
     """
     Deterministic hybrid search pipeline:
-    1. Exact brute-force cosine similarity (no HNSW approximation)
+    1. Exact brute-force / pgvector similarity search
     2. BM25 reranking for keyword precision
-    3. Enrich with SQLite metadata
+    3. Enrich with database metadata
     """
     # Step 1: Exact vector search (deterministic)
-    candidates = exact_vector_search(query, user_id=user_id, n_results=30)
+    candidates = exact_vector_search(query, user_id=user_id, n_results=30, nomic_key=nomic_key)
     if not candidates:
         return []
 
     # Step 2: BM25 rerank
     reranked = bm25_rerank(query, candidates)[:top_k]
 
-    # Step 3: Enrich with SQLite metadata
+    # Step 3: Enrich with database metadata
     db = SessionLocal()
     try:
         enriched = []

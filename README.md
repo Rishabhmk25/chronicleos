@@ -1,89 +1,117 @@
-# ChronicleOS — Complete AI Agent Build Guide
+# ChronicleOS — Advanced Personal Memory OS & Semantic Search Engine
 
-## Project Overview
+ChronicleOS is an advanced, production-ready "Memory OS" that passive-captures, organizes, clusters, and queries your complete web browsing history. Combining hybrid search precision with deep relational knowledge graph reasoning, it acts as a secure, stateless secondary brain.
 
-ChronicleOS is a personal semantic memory engine that captures and organizes your browsing history. It consists of a Chrome extension, a Python backend, and a React dashboard, allowing users to retrieve and interact with their browsing data through natural language queries.
+---
 
-## Features
+## Technical Architecture Overview
 
-- **Chrome Extension**: Captures browsing sessions and selected text in the background.
-- **Python Backend (FastAPI)**: Handles local SQLite data storage, exact cosine-similarity vector search, and BM25 hybrid ranking.
-- **Local Graph RAG**: Extracts knowledge graphs (nodes & edges) using Groq API and NetworkX.
-- **React Dashboard**: Provides a stunning glassmorphism interface to reconstruct chronological trails, view weekly summaries, and ask questions about your browsing data.
-- **Multi-Tenant Authentication**: JWT secure login system isolating user data and RAG context.
+```mermaid
+graph TD
+    Ext[Chrome Extension] -->|Queue & Batch Sync| API[FastAPI Backend]
+    API -->|Dialect Dispatcher| DB[(Supabase PostgreSQL / SQLite)]
+    DB -->|pgvector / SQLiteVector| DB
+    API -->|NetworkX Graph Builder| Graph[graph.json]
+    API -->|Synthesizer| LLM[Groq Llama-3.1 RAG]
+    Dashboard[React Dashboard] -->|Stateless JWT API| API
+    Ext -->|Auto-Sync Auth| Dashboard
+```
 
-## Getting Started
+---
 
-### Prerequisites
+## 1. Features & Architectural Upgrades
 
-1. **Node.js**: Ensure you have Node.js version 18 or higher installed.
-2. **Python**: Make sure Python 3.8 or higher is installed.
-3. **API Keys**: Obtain API keys for Groq and Nomic AI as outlined in the setup instructions.
+### Chrome Extension (Plasmo + React)
+- **Passive Memory Capture**: Silently captures tab activity, titles, domains, highlighted snippets, and full-page text content.
+- **Queue-and-Batch Sync Pipeline**: Accumulates captures in-memory and flushes them to the backend periodically (every 15s or immediately on 5 captures) to prevent page-loading lag and API spam.
+- **Offline Network Resilience**: Automatically prepends failed batches back to the capture queue in case of connectivity loss.
+- **Single Sign-On (SSO) Auto-Sync**: Automatically detects the dashboard authentication state from active tabs and signs into the extension popup without manual input.
 
-### Setup Instructions
+### Backend (FastAPI + SQLAlchemy)
+- **Dynamic Database Dialect**: Connects to **Supabase (PostgreSQL)** when `DATABASE_URL` is set, dynamically enabling the `vector` extension. Falls back to a local **SQLite** database for completely offline development.
+- **pgvector Vector Database**: ChromaDB has been completely removed. Text embeddings (768-dimensional float arrays from Nomic AI) are stored natively inside the relational `captures` table.
+  - *PostgreSQL*: Uses native `pgvector.sqlalchemy.Vector(768)` fields for fast database-level cosine similarity queries (`cosine_distance`).
+  - *SQLite Fallback*: Automatically serializes embeddings to a JSON-mapped `SQLiteVector` text column and applies a high-fidelity brute-force cosine match in Python using `numpy`.
+- **Stateless JWT Multi-Tenancy**: Secure `bcrypt` password hashing (bypassing passlib limits) and strict `user_id` context isolation. No user's semantic memory can contaminate another's.
+- **Automated Unsupervised Clustering**: DBSCAN algorithm merges temporal and semantic distance matrices to group related pages into cohesive "Sessions" (labeled via Groq Llama-3).
+- **Graph RAG (NetworkX)**: An asynchronous pipeline extracts entities and relationships in the background, building a multi-hop knowledge graph.
 
-1. **Clone the Repository**:
-   ```
-   git clone <repository-url>
-   cd chronicleos
-   ```
+### React Dashboard (Vite + TailwindCSS)
+- **Vibrant Glassmorphism Interface**: Sleek dark mode featuring blur filters, harmonic radial gradients, and interactive micro-animations.
+- **Three-Stage Search Precision**:
+  1. *Semantic Search*: Native `pgvector` or exact cosine vector retrieval.
+  2. *Lexical Matching*: Normalised BM25 Okapi term matching.
+  3. *Linear Hybrid Scoring*: Fusion of vector and BM25 scores (60/40 split) plus title matching bonuses.
+- **Interactive Memory Q&A**: Asks questions grounded strictly in your personal history with tiered synthesis levels ("lite", "medium", "high").
 
-2. **Create Environment Variables**:
-   Create a `.env` file in the `backend` directory and add your API keys:
-   ```
+---
+
+## 2. Cloud Deployments Setup
+
+### Backend Deployment (Render)
+The backend is prepared for one-click deployment on **Render** (supporting long-running async background tasks like Graph extraction and clustering).
+- Deployment configuration is handled by [render.yaml](file:///d:/ML/chronicalos/chronicleos/backend/render.yaml).
+- Requires setting environment variables on Render: `GROQ_API_KEY`, `NOMIC_API_KEY`, `DATABASE_URL` (your Supabase URL), and `JWT_SECRET_KEY`.
+
+### Frontend Dashboard Deployment (Vercel)
+The dashboard React SPA is ready for static deployment on **Vercel**.
+- Router redirects are configured in [vercel.json](file:///d:/ML/chronicalos/chronicleos/dashboard/vercel.json).
+- Axios is configured to dynamically target `import.meta.env.VITE_API_URL` or fallback to `http://localhost:8000`.
+
+---
+
+## 3. Getting Started
+
+### Backend Setup
+1. Navigate to the `backend/` folder and create a `.env` file:
+   ```env
    GROQ_API_KEY=your_groq_api_key
    NOMIC_API_KEY=your_nomic_api_key
+   JWT_SECRET_KEY=your_secure_random_signing_key
+   DATABASE_URL=postgresql://user:password@host:port/dbname # Optional (defaults to SQLite fallback)
    ```
-
-3. **Install Backend Dependencies**:
-   Navigate to the `backend` directory and install the required Python packages:
-   ```
+2. Create a virtual environment and install dependencies:
+   ```bash
    cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
+   python -m venv .venv
+   .venv\Scripts\activate  # On Linux/macOS: source .venv/bin/activate
    pip install -r requirements.txt
    ```
-
-4. **Install Frontend Dependencies**:
-   Navigate to the `dashboard` directory and install the required Node.js packages:
-   ```
-   cd ../dashboard
-   npm install
-   ```
-
-5. **Build and Run the Chrome Extension**:
-   Navigate to the `extension` directory and run the development server:
-   ```
-   cd ../extension
-   npm install
-   npm run dev
-   ```
-
-6. **Run the Backend**:
-   Start the FastAPI backend:
-   ```
-   cd ../backend
+3. Start the FastAPI server:
+   ```bash
    python main.py
    ```
 
-7. **Start the React Dashboard**:
-   In a new terminal, navigate to the `dashboard` directory and start the development server:
+### Dashboard Setup
+1. Navigate to the `dashboard/` folder and install dependencies:
+   ```bash
+   cd dashboard
+   pnpm install  # or npm install
    ```
-   cd ../dashboard
-   npm run dev
+2. Start the development server:
+   ```bash
+   pnpm dev
    ```
 
-### Usage
+### Chrome Extension Setup
+1. Navigate to the `extension/` folder:
+   ```bash
+   cd extension
+   pnpm install
+   pnpm dev
+   ```
+2. Open Chrome and navigate to `chrome://extensions/`.
+3. Enable **Developer mode** (top-right toggle).
+4. Click **Load unpacked** and select the `build/chrome-mv3-dev/` directory generated inside the extension folder.
 
-- **Chrome Extension**: After loading the extension in Chrome, it will start capturing your browsing sessions.
-- **Dashboard**: Access the dashboard at `http://localhost:5173` to view your captured sessions, search your history, and ask questions about your browsing data.
+---
 
-## Troubleshooting
+## 4. Verification & Diagnostics
 
-- Ensure all services are running and accessible.
-- Check the console for any errors in the Chrome extension or the dashboard.
-- Verify that the API keys in the `.env` file are correct.
+To run a full end-to-end integration test checking registration, auth headers, page capture, background vector embedding, SQL storage, exact hybrid similarity matching, and RAG answer synthesis, execute:
+```bash
+.venv\Scripts\python C:\Users\Lenovo\.gemini\antigravity-ide\scratch\test_flow.py
+```
 
 ## License
-
-This project is licensed under the MIT License. See the LICENSE file for more details.
+MIT License.

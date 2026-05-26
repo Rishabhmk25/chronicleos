@@ -4,17 +4,36 @@ import Timeline from "./components/Timeline"
 import SearchBar from "./components/SearchBar"
 import MemoryQA from "./components/MemoryQA"
 import Login from "./components/Login"
+import Settings from "./components/Settings"
 
-// Setup axios interceptor for JWT
+// Setup axios base URL and automatically synchronize it to localStorage for the Chrome extension
+const getBaseURL = () => {
+  const url = import.meta.env.VITE_API_URL || "http://localhost:8000"
+  localStorage.setItem("cos_backend_url", url)
+  return url
+}
+axios.defaults.baseURL = getBaseURL()
+
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem("cos_token")
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+
+  // Attach custom BYOK headers if saved locally
+  const groqKey = localStorage.getItem("cos_groq_api_key")
+  const nomicKey = localStorage.getItem("cos_nomic_api_key")
+  if (groqKey) {
+    config.headers["X-Groq-Api-Key"] = groqKey
+  }
+  if (nomicKey) {
+    config.headers["X-Nomic-Api-Key"] = nomicKey
+  }
+
   return config
 })
 
-type Tab = "timeline" | "search" | "memory"
+type Tab = "timeline" | "search" | "memory" | "settings"
 
 interface BackendStatus {
   total_captures: number
@@ -26,6 +45,7 @@ const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "timeline", icon: "◈", label: "Timeline" },
   { key: "search",   icon: "⌕", label: "Search Memory" },
   { key: "memory",   icon: "⬡", label: "Ask Memory" },
+  { key: "settings", icon: "⚙", label: "Settings / BYOK" },
 ]
 
 export default function App() {
@@ -75,7 +95,7 @@ export default function App() {
       // Only ping if we have a token
       if (!token) return
       
-      axios.get("http://localhost:8000/status")
+      axios.get("/status")
         .then(r => { setBackendStatus(r.data); setConnected(true) })
         .catch(err => {
           if (err.response?.status !== 401) {
@@ -91,7 +111,7 @@ export default function App() {
   const flushDB = async () => {
     if (window.confirm("Are you sure you want to completely erase all memories? This cannot be undone.")) {
       try {
-        await axios.delete("http://localhost:8000/flush")
+        await axios.delete("/flush")
         window.location.reload()
       } catch (e) {
         alert("Failed to flush database.")
@@ -176,6 +196,7 @@ export default function App() {
           {tab === "timeline" && <Timeline />}
           {tab === "search"   && <SearchBar />}
           {tab === "memory"   && <MemoryQA />}
+          {tab === "settings" && <Settings />}
         </main>
       </div>
     </div>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi import FastAPI, Depends, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -9,7 +9,6 @@ from datetime import timedelta
 import auth
 from database import get_db, init_db, PageCapture, BrowsingSession, User
 from fastapi.security import OAuth2PasswordRequestForm
-from passlib.context import CryptContext
 
 app = FastAPI(title="ChronicleOS API")
 
@@ -31,6 +30,10 @@ class CaptureRequest(BaseModel):
     session_id: str
     selected_text: str | None = None
     page_text: str | None = None
+
+
+class CaptureBatchRequest(BaseModel):
+    captures: list[CaptureRequest]
 
 
 class TextCaptureRequest(BaseModel):
@@ -103,6 +106,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def capture_page(
     req: CaptureRequest,
     background_tasks: BackgroundTasks,
+    x_groq_api_key: str | None = Header(None),
+    x_nomic_api_key: str | None = Header(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
@@ -136,7 +141,7 @@ def capture_page(
     db.commit()
     db.refresh(capture)
 
-    background_tasks.add_task(embed_capture_task, capture.id)
+    background_tasks.add_task(embed_capture_task, capture.id, x_groq_api_key, x_nomic_api_key)
 
     return {"id": capture.id, "status": "captured"}
 
@@ -157,34 +162,72 @@ def capture_text(req: TextCaptureRequest, db: Session = Depends(get_db), current
 
 # ─── Status endpoint ─────────────────────────────────────────────────────────
 
+@app.post("/capture/batch")
+def capture_batch(
+    req: CaptureBatchRequest,
+    background_tasks: BackgroundTasks,
+    x_groq_api_key: str | None = Header(None),
+    x_nomic_api_key: str | None = Header(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    """Batch capture multiple pages, with duplicate prevention and background embedding."""
+    results = []
+    
+    for capture_req in req.captures:
+        domain = urlparse(capture_req.url).netloc
+        
+        # Deduplication check
+        existing = (
+            db.query(PageCapture)
+            .filter(PageCapture.url == capture_req.url, PageCapture.user_id == current_user.id)
+            .order_by(PageCapture.timestamp.desc())
+            .first()
+        )
+        if existing and (capture_req.timestamp - existing.timestamp) < 1800000:
+            existing.timestamp = capture_req.timestamp
+            results.append({"url": capture_req.url, "id": existing.id, "status": "deduplicated"})
+            continue
+            
+        capture = PageCapture(
+            url=capture_req.url,
+            title=capture_req.title,
+            domain=domain,
+            timestamp=capture_req.timestamp,
+            visit_start=capture_req.visit_start,
+            selected_text=capture_req.selected_text,
+            page_text=capture_req.page_text,
+            tab_id=capture_req.tab_id,
+            session_id=capture_req.session_id,
+            embedded=0,
+            user_id=current_user.id,
+        )
+        db.add(capture)
+        db.flush()
+        
+        results.append({"url": capture_req.url, "id": capture.id, "status": "captured"})
+        background_tasks.add_task(embed_capture_task, capture.id, x_groq_api_key, x_nomic_api_key)
+        
+    db.commit()
+    return {"status": "ok", "results": results}
+
+
 @app.delete("/flush")
 def flush_database(db: Session = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
-    """Clear all data from SQLite and ChromaDB for the current user."""
+    """Clear all data from database for the current user."""
     db.query(PageCapture).filter(PageCapture.user_id == current_user.id).delete()
     db.query(BrowsingSession).filter(BrowsingSession.user_id == current_user.id).delete()
     db.commit()
-    try:
-        from embedder import collection
-        all_docs = collection.get(where={"user_id": current_user.id})
-        if all_docs and all_docs['ids']:
-            collection.delete(ids=all_docs['ids'])
-    except Exception as e:
-        print(f"Chroma flush error: {e}")
     return {"status": "flushed"}
 
 
 @app.delete("/captures/{capture_id}")
 def delete_capture(capture_id: int, db: Session = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
-    """Delete a specific capture from SQLite and ChromaDB."""
+    """Delete a specific capture from the database."""
     capture = db.query(PageCapture).filter(PageCapture.id == capture_id, PageCapture.user_id == current_user.id).first()
     if capture:
         db.delete(capture)
         db.commit()
-    try:
-        from embedder import collection
-        collection.delete(ids=[str(capture_id)])
-    except Exception as e:
-        print(f"Chroma delete error: {e}")
     return {"status": "deleted"}
 
 @app.get("/status")
@@ -268,11 +311,16 @@ def get_sessions(db: Session = Depends(get_db), current_user: User = Depends(aut
 # ─── Search endpoint ─────────────────────────────────────────────────────────
 
 @app.get("/search")
-def search_endpoint(q: str, limit: int = 10, current_user: User = Depends(auth.get_current_user)):
+def search_endpoint(
+    q: str, 
+    limit: int = 10, 
+    x_nomic_api_key: str | None = Header(None),
+    current_user: User = Depends(auth.get_current_user)
+):
     """Hybrid BM25 + vector search."""
     try:
         from search import search as hybrid_search
-        results = hybrid_search(q, user_id=current_user.id, top_k=limit)
+        results = hybrid_search(q, user_id=current_user.id, top_k=limit, nomic_key=x_nomic_api_key)
         return {"results": results, "query": q}
     except Exception as e:
         return {"results": [], "query": q, "error": str(e)}
@@ -281,16 +329,20 @@ def search_endpoint(q: str, limit: int = 10, current_user: User = Depends(auth.g
 # ─── Cluster endpoint ─────────────────────────────────────────────────────────
 
 @app.post("/cluster")
-def trigger_clustering(background_tasks: BackgroundTasks, current_user: User = Depends(auth.get_current_user)):
+def trigger_clustering(
+    background_tasks: BackgroundTasks, 
+    x_groq_api_key: str | None = Header(None),
+    current_user: User = Depends(auth.get_current_user)
+):
     """Trigger DBSCAN clustering in the background."""
-    background_tasks.add_task(run_clustering, current_user.id)
+    background_tasks.add_task(run_clustering, current_user.id, x_groq_api_key)
     return {"status": "clustering started"}
 
 
-def run_clustering(user_id: int):
+def run_clustering(user_id: int, groq_key: str | None = None):
     try:
         from clustering import cluster_all
-        cluster_all(user_id)
+        cluster_all(user_id, groq_key=groq_key)
     except Exception as e:
         print(f"Clustering error: {e}")
 
@@ -298,50 +350,64 @@ def run_clustering(user_id: int):
 # ─── RAG endpoints ───────────────────────────────────────────────────────────
 
 @app.get("/ask")
-def ask_endpoint(q: str, level: str = "high", current_user: User = Depends(auth.get_current_user)):
+def ask_endpoint(
+    q: str, 
+    level: str = "high", 
+    x_groq_api_key: str | None = Header(None),
+    x_nomic_api_key: str | None = Header(None),
+    current_user: User = Depends(auth.get_current_user)
+):
     """Answer a natural language question about browsing history."""
     try:
         from rag import ask_memory
-        return ask_memory(q, user_id=current_user.id, level=level)
+        return ask_memory(q, user_id=current_user.id, level=level, groq_key=x_groq_api_key, nomic_key=x_nomic_api_key)
     except Exception as e:
         return {"answer": f"Error: {str(e)}", "question": q, "sources": []}
 
 
 @app.get("/reconstruct")
-def reconstruct_endpoint(topic: str, current_user: User = Depends(auth.get_current_user)):
+def reconstruct_endpoint(
+    topic: str, 
+    x_groq_api_key: str | None = Header(None),
+    x_nomic_api_key: str | None = Header(None),
+    current_user: User = Depends(auth.get_current_user)
+):
     """Reconstruct the chronological research trail for a topic."""
     try:
         from rag import reconstruct_workflow
-        return reconstruct_workflow(topic, user_id=current_user.id)
+        return reconstruct_workflow(topic, user_id=current_user.id, groq_key=x_groq_api_key, nomic_key=x_nomic_api_key)
     except Exception as e:
         return {"trail": [], "topic": topic, "narrative": f"Error: {str(e)}"}
 
 
 @app.get("/weekly")
-def weekly_endpoint(current_user: User = Depends(auth.get_current_user)):
+def weekly_endpoint(
+    x_groq_api_key: str | None = Header(None),
+    current_user: User = Depends(auth.get_current_user)
+):
     """Generate a weekly browsing summary."""
     try:
         from rag import weekly_summary
-        return weekly_summary(user_id=current_user.id)
+        return weekly_summary(user_id=current_user.id, groq_key=x_groq_api_key)
     except Exception as e:
         return {"summary": f"Error: {str(e)}"}
 
 
 # ─── Background embedding task ───────────────────────────────────────────────
 
-def embed_capture_task(capture_id: int):
-    """Called in background after each capture. Embeds and stores in ChromaDB."""
+def embed_capture_task(capture_id: int, groq_key: str | None = None, nomic_key: str | None = None):
+    """Called in background after each capture. Embeds and stores in database."""
     try:
         from embedder import embed_and_store
         from graph import extract_entities_and_relationships
         db = next(get_db())
         capture = db.query(PageCapture).filter(PageCapture.id == capture_id).first()
         if capture:
-            embed_and_store(capture)
+            embed_and_store(capture, nomic_key=nomic_key)
             
             # Extract Graph RAG entities in background
             if capture.page_text:
-                extract_entities_and_relationships(capture.page_text, capture.url)
+                extract_entities_and_relationships(capture.page_text, capture.url, groq_key=groq_key)
                 
             capture.embedded = 1
             db.commit()

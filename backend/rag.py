@@ -9,16 +9,15 @@ from datetime import datetime
 
 load_dotenv()
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 LLM_MODEL = "llama-3.1-8b-instant"
 
 
-def ask_memory(question: str, user_id: int, level: str = "high") -> dict:
+def ask_memory(question: str, user_id: int, level: str = "high", groq_key: str | None = None, nomic_key: str | None = None) -> dict:
     """
     Full RAG pipeline:
-    1. Retrieve relevant pages using hybrid search
+    1. Retrieve relevant pages using hybrid search (with dynamic Nomic key support)
     2. Format context for LLM
-    3. Generate answer grounded in user's actual browsing history
+    3. Generate answer using dynamic Groq client grounded in actual history
     """
     if level == "lite":
         top_k_retrieve = 4
@@ -40,7 +39,7 @@ def ask_memory(question: str, user_id: int, level: str = "high") -> dict:
         prompt_instruction = "Answer in a detailed and comprehensive manner, accurately summarizing the text from the history. Provide as much relevant technical detail as possible based on the text."
 
     # Step 1: retrieve
-    results = hybrid_search(question, user_id=user_id, top_k=top_k_retrieve)
+    results = hybrid_search(question, user_id=user_id, top_k=top_k_retrieve, nomic_key=nomic_key)
     if not results:
         return {
             "answer": "I couldn't find any relevant pages in your browsing history for this question.",
@@ -65,14 +64,6 @@ def ask_memory(question: str, user_id: int, level: str = "high") -> dict:
 
     context = "\n\n".join(context_parts)
 
-    # Graph RAG - DISABLED: cross-topic contamination between related concepts
-    # (e.g. PINNs↔PyTorch shared nodes) was injecting noise into the LLM prompt.
-    # Graph still builds in background. Will re-enable with topic-filtered traversal.
-    # from graph import get_graph_context_for_urls
-    # graph_context = get_graph_context_for_urls(retrieved_urls)
-    # if graph_context:
-    #     context += f"\n\n{graph_context}"
-
     # Step 3: LLM prompt
     prompt = f"""You are ChronicleOS, a strictly-grounded AI memory assistant.
 Answer the user's question based ONLY on the browsing history text provided below.
@@ -88,8 +79,11 @@ USER QUESTION: {question}
 
 {prompt_instruction} Do NOT say "According to the context" or list the source URLs, as the UI will display the sources separately. Just give the factual answer:"""
 
+    active_key = groq_key or os.getenv("GROQ_API_KEY")
+    client = Groq(api_key=active_key)
+
     try:
-        response = groq_client.chat.completions.create(
+        response = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
@@ -106,12 +100,12 @@ USER QUESTION: {question}
     }
 
 
-def reconstruct_workflow(topic: str, user_id: int) -> dict:
+def reconstruct_workflow(topic: str, user_id: int, groq_key: str | None = None, nomic_key: str | None = None) -> dict:
     """
     Given a topic, reconstruct the chronological trail of pages
     showing HOW the user arrived at ideas related to that topic.
     """
-    results = hybrid_search(topic, user_id=user_id, top_k=15)
+    results = hybrid_search(topic, user_id=user_id, top_k=15, nomic_key=nomic_key)
     if not results:
         return {"trail": [], "topic": topic}
 
@@ -136,8 +130,11 @@ Write a brief narrative (3-5 sentences) explaining how their thinking evolved:
 
 Be concise and specific."""
 
+    active_key = groq_key or os.getenv("GROQ_API_KEY")
+    client = Groq(api_key=active_key)
+
     try:
-        response = groq_client.chat.completions.create(
+        response = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=256,
@@ -154,7 +151,7 @@ Be concise and specific."""
     }
 
 
-def weekly_summary(user_id: int) -> dict:
+def weekly_summary(user_id: int, groq_key: str | None = None) -> dict:
     """Generate a high-level summary of the user's research over the last 7 days."""
     db = SessionLocal()
     try:
@@ -193,7 +190,10 @@ Most visited sites:
 Write 3-4 sentences summarizing what the user focused on this week, like a thoughtful weekly review.
 CRITICAL: Do NOT use markdown headers or bold text (like **Weekly Summary**). Do NOT use conversational filler like "Here is your summary". Just write the 3-4 sentences directly."""
 
-        response = groq_client.chat.completions.create(
+        active_key = groq_key or os.getenv("GROQ_API_KEY")
+        client = Groq(api_key=active_key)
+
+        response = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=256,

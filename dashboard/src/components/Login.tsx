@@ -21,7 +21,7 @@ export default function Login({ onLogin }: LoginProps) {
 
     try {
       if (isRegister) {
-        const res = await axios.post("http://localhost:8000/register", {
+        const res = await axios.post("/register", {
           username,
           password
         })
@@ -30,7 +30,7 @@ export default function Login({ onLogin }: LoginProps) {
         const formData = new URLSearchParams()
         formData.append("username", username)
         formData.append("password", password)
-        const res = await axios.post("http://localhost:8000/login", formData, {
+        const res = await axios.post("/login", formData, {
           headers: { "Content-Type": "application/x-www-form-urlencoded" }
         })
         onLogin(res.data.access_token, username)

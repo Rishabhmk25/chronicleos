@@ -9,16 +9,15 @@ from groq import Groq
 
 load_dotenv()
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 LABEL_MODEL = "llama-3.1-8b-instant"
 
-def cluster_all(user_id: int):
+def cluster_all(user_id: int, groq_key: str | None = None):
     """
     Main clustering pipeline:
-    1. Load all embeddings from ChromaDB
+    1. Load all embeddings from the database
     2. Run DBSCAN to find clusters
-    3. Label each cluster with LLM
-    4. Update SQLite with cluster assignments
+    3. Label each cluster with LLM (utilising dynamic Groq keys)
+    4. Update database with cluster assignments
     """
     print(f"Loading embeddings for clustering user {user_id}...")
     ids, embeddings, metadatas = get_all_embeddings_for_clustering(user_id)
@@ -31,9 +30,6 @@ def cluster_all(user_id: int):
     X_norm = normalize(X)  # cosine distance works better normalized
 
     # DBSCAN params:
-    # eps=0.15 means pages within 15% cosine distance are neighbors
-    # min_samples=3 means need 3 pages to form a cluster
-    # Tune eps up if too many noise points (-1 labels)
     db = DBSCAN(eps=0.15, min_samples=3, metric="cosine")
     labels = db.fit_predict(X_norm)
 
@@ -57,7 +53,7 @@ def cluster_all(user_id: int):
     try:
         for local_cluster_id, pages in clusters.items():
             global_cluster_id = user_id * 1000000 + local_cluster_id
-            label = generate_cluster_label(pages)
+            label = generate_cluster_label(pages, groq_key=groq_key)
             start_ts = min(p["metadata"]["timestamp"] for p in pages)
             end_ts = max(p["metadata"]["timestamp"] for p in pages)
 
@@ -94,7 +90,7 @@ def cluster_all(user_id: int):
     finally:
         db_session.close()
 
-def generate_cluster_label(pages: list[dict]) -> str:
+def generate_cluster_label(pages: list[dict], groq_key: str | None = None) -> str:
     """Ask Groq LLM to name this cluster based on page titles. ~1s response time."""
     titles = [p["metadata"].get("title", "") for p in pages[:8]]  # use up to 8 titles
     titles_str = "\n".join(f"- {t}" for t in titles if t)
@@ -107,8 +103,11 @@ Give a SHORT label (3-6 words max) describing what the user was doing/learning.
 Examples: "Learning CUDA optimization", "Healthcare startup research", "React hooks tutorial"
 Reply with ONLY the label, nothing else."""
 
+    active_key = groq_key or os.getenv("GROQ_API_KEY")
+    client = Groq(api_key=active_key)
+
     try:
-        response = groq_client.chat.completions.create(
+        response = client.chat.completions.create(
             model=LABEL_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=20,

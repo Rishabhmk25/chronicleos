@@ -31,7 +31,7 @@ export default function SessionCard({ session }: { session: Session }) {
 
   const deleteCapture = async (id: number) => {
     try {
-      await axios.delete(`http://localhost:8000/captures/${id}`)
+      await axios.delete(`/captures/${id}`)
       setPages(pages.filter(p => p.id !== id))
     } catch (e) {
       alert("Failed to delete memory")
