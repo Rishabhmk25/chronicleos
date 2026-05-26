@@ -67,9 +67,9 @@ def cluster_all(user_id: int, groq_key: str | None = None):
     combined = (SEMANTIC_WEIGHT * cosine_dist) + (TEMPORAL_WEIGHT * temporal_dist)
     np.fill_diagonal(combined, 0.0)
 
-    # ── Adaptive eps ────────────────────────────────────────────────────────
-    eps = _adaptive_eps(combined, k=MIN_SAMPLES)
-    print(f"[Clustering] Adaptive eps={eps:.4f} on {len(ids)} pages")
+    # ── Fixed eps ────────────────────────────────────────────────────────
+    eps = EPS_DEFAULT
+    print(f"[Clustering] Fixed eps={eps:.4f} on {len(ids)} pages")
 
     # ── DBSCAN ──────────────────────────────────────────────────────────────
     db = DBSCAN(eps=eps, min_samples=MIN_SAMPLES, metric="precomputed")
