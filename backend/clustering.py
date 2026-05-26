@@ -52,8 +52,7 @@ def cluster_all(user_id: int, groq_key: str | None = None):
     db_session = SessionLocal()
     try:
         for local_cluster_id, pages in clusters.items():
-            local_cluster_id = int(local_cluster_id)
-            global_cluster_id = (int(user_id) * 1000000) + local_cluster_id
+            global_cluster_id = user_id * 1000000 + local_cluster_id
             label = generate_cluster_label(pages, groq_key=groq_key)
             start_ts = min(p["metadata"]["timestamp"] for p in pages)
             end_ts = max(p["metadata"]["timestamp"] for p in pages)
