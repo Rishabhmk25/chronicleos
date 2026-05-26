@@ -13,6 +13,21 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chronicle.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Fix improperly encoded passwords in DATABASE_URL (e.g. if the password contains an '@' sign)
+if DATABASE_URL.startswith("postgresql://"):
+    parts = DATABASE_URL.split("@")
+    if len(parts) > 2:
+        # The last part is the host string. Everything before it is credentials.
+        credentials = "@".join(parts[:-1])
+        host_info = parts[-1]
+        
+        cred_parts = credentials.split(":", 2)
+        if len(cred_parts) == 3:
+            import urllib.parse
+            password = cred_parts[2]
+            safe_password = urllib.parse.quote_plus(password)
+            DATABASE_URL = f"{cred_parts[0]}:{cred_parts[1]}:{safe_password}@{host_info}"
+
 is_postgres = DATABASE_URL.startswith("postgresql")
 
 # SQLiteVector maps a Python list/tuple to a serialized JSON string in a SQLite Text column.
