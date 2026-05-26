@@ -13,7 +13,7 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 LLM_MODEL = "llama-3.1-8b-instant"
 
 
-def ask_memory(question: str, level: str = "high") -> dict:
+def ask_memory(question: str, user_id: int, level: str = "high") -> dict:
     """
     Full RAG pipeline:
     1. Retrieve relevant pages using hybrid search
@@ -40,7 +40,7 @@ def ask_memory(question: str, level: str = "high") -> dict:
         prompt_instruction = "Answer in a detailed and comprehensive manner, accurately summarizing the text from the history. Provide as much relevant technical detail as possible based on the text."
 
     # Step 1: retrieve
-    results = hybrid_search(question, top_k=top_k_retrieve)
+    results = hybrid_search(question, user_id=user_id, top_k=top_k_retrieve)
     if not results:
         return {
             "answer": "I couldn't find any relevant pages in your browsing history for this question.",
@@ -49,8 +49,10 @@ def ask_memory(question: str, level: str = "high") -> dict:
 
     # Step 2: build context
     context_parts = []
+    retrieved_urls = []
     # Only feed top sources to LLM to avoid Groq rate limit
     for i, r in enumerate(results[:num_sources]):
+        retrieved_urls.append(r["url"])
         ts = datetime.fromtimestamp(r["timestamp"] / 1000).strftime("%b %d, %Y %H:%M")
         part = f"[{i+1}] Title: {r['title']}\nURL: {r['url']}\nVisited: {ts}"
         if r.get("selected_text"):
@@ -63,10 +65,21 @@ def ask_memory(question: str, level: str = "high") -> dict:
 
     context = "\n\n".join(context_parts)
 
+    # Graph RAG - DISABLED: cross-topic contamination between related concepts
+    # (e.g. PINNs↔PyTorch shared nodes) was injecting noise into the LLM prompt.
+    # Graph still builds in background. Will re-enable with topic-filtered traversal.
+    # from graph import get_graph_context_for_urls
+    # graph_context = get_graph_context_for_urls(retrieved_urls)
+    # if graph_context:
+    #     context += f"\n\n{graph_context}"
+
     # Step 3: LLM prompt
     prompt = f"""You are ChronicleOS, a strictly-grounded AI memory assistant.
 Answer the user's question based ONLY on the browsing history text provided below.
-Do not use outside general knowledge. If the answer is not contained in the provided page context, explicitly say that you don't know based on the history.
+CRITICAL RULES:
+- Do not use outside general knowledge.
+- If the provided context contains information about MULTIPLE topics, you MUST answer ONLY about the specific topic the user asked about. Ignore unrelated context.
+- If the answer is not contained in the provided page context, explicitly say that you don't have enough information in the history.
 
 BROWSING HISTORY CONTEXT:
 {context}
@@ -80,7 +93,7 @@ USER QUESTION: {question}
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
-            temperature=0.4,
+            temperature=0.0,
         )
         answer = response.choices[0].message.content
     except Exception as e:
@@ -93,12 +106,12 @@ USER QUESTION: {question}
     }
 
 
-def reconstruct_workflow(topic: str) -> dict:
+def reconstruct_workflow(topic: str, user_id: int) -> dict:
     """
     Given a topic, reconstruct the chronological trail of pages
     showing HOW the user arrived at ideas related to that topic.
     """
-    results = hybrid_search(topic, top_k=15)
+    results = hybrid_search(topic, user_id=user_id, top_k=15)
     if not results:
         return {"trail": [], "topic": topic}
 
@@ -141,16 +154,15 @@ Be concise and specific."""
     }
 
 
-def weekly_summary() -> dict:
-    """Generate a summary of this week's browsing patterns."""
-    from datetime import datetime, timedelta
+def weekly_summary(user_id: int) -> dict:
+    """Generate a high-level summary of the user's research over the last 7 days."""
     db = SessionLocal()
     try:
-        week_ago = (datetime.utcnow() - timedelta(days=7)).timestamp() * 1000
-        pages = (
-            db.query(PageCapture)
-            .all()
-        )
+        now = datetime.utcnow().timestamp() * 1000
+        limit_ms = now - (7 * 24 * 60 * 60 * 1000)
+
+        # 1. Fetch data
+        pages = db.query(PageCapture).filter(PageCapture.timestamp >= limit_ms, PageCapture.user_id == user_id).all()
         if not pages:
             return {"summary": "No browsing data from the past week."}
 

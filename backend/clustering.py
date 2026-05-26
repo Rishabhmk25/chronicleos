@@ -12,7 +12,7 @@ load_dotenv()
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 LABEL_MODEL = "llama-3.1-8b-instant"
 
-def cluster_all():
+def cluster_all(user_id: int):
     """
     Main clustering pipeline:
     1. Load all embeddings from ChromaDB
@@ -20,8 +20,8 @@ def cluster_all():
     3. Label each cluster with LLM
     4. Update SQLite with cluster assignments
     """
-    print("Loading embeddings for clustering...")
-    ids, embeddings, metadatas = get_all_embeddings_for_clustering()
+    print(f"Loading embeddings for clustering user {user_id}...")
+    ids, embeddings, metadatas = get_all_embeddings_for_clustering(user_id)
 
     if len(ids) < 5:
         print("Not enough data to cluster (need 5+ pages)")
@@ -55,14 +55,15 @@ def cluster_all():
     # Label and save each cluster
     db_session = SessionLocal()
     try:
-        for cluster_id, pages in clusters.items():
+        for local_cluster_id, pages in clusters.items():
+            global_cluster_id = user_id * 1000000 + local_cluster_id
             label = generate_cluster_label(pages)
             start_ts = min(p["metadata"]["timestamp"] for p in pages)
             end_ts = max(p["metadata"]["timestamp"] for p in pages)
 
             # Upsert into BrowsingSession table
             existing = db_session.query(BrowsingSession).filter(
-                BrowsingSession.cluster_id == cluster_id
+                BrowsingSession.cluster_id == global_cluster_id
             ).first()
 
             if existing:
@@ -74,7 +75,8 @@ def cluster_all():
                     start_time=start_ts,
                     end_time=end_ts,
                     page_count=len(pages),
-                    cluster_id=cluster_id
+                    cluster_id=global_cluster_id,
+                    user_id=user_id
                 )
                 db_session.add(session)
 
@@ -84,7 +86,7 @@ def cluster_all():
                     PageCapture.id == page["id"]
                 ).first()
                 if capture:
-                    capture.cluster_id = cluster_id
+                    capture.cluster_id = global_cluster_id
                     capture.cluster_label = label
 
         db_session.commit()

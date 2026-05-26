@@ -6,9 +6,11 @@ ChronicleOS is a personal semantic memory engine that captures and organizes you
 
 ## Features
 
-- **Chrome Extension**: Captures browsing sessions and selected text.
-- **Python Backend**: Handles data storage, embedding, and search functionalities.
-- **React Dashboard**: Provides a user-friendly interface to visualize and query browsing history.
+- **Chrome Extension**: Captures browsing sessions and selected text in the background.
+- **Python Backend (FastAPI)**: Handles local SQLite data storage, exact cosine-similarity vector search, and BM25 hybrid ranking.
+- **Local Graph RAG**: Extracts knowledge graphs (nodes & edges) using Groq API and NetworkX.
+- **React Dashboard**: Provides a stunning glassmorphism interface to reconstruct chronological trails, view weekly summaries, and ask questions about your browsing data.
+- **Multi-Tenant Authentication**: JWT secure login system isolating user data and RAG context.
 
 ## Getting Started
 

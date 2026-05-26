@@ -3,6 +3,16 @@ import axios from "axios"
 import Timeline from "./components/Timeline"
 import SearchBar from "./components/SearchBar"
 import MemoryQA from "./components/MemoryQA"
+import Login from "./components/Login"
+
+// Setup axios interceptor for JWT
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem("cos_token")
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
 
 type Tab = "timeline" | "search" | "memory"
 
@@ -24,6 +34,36 @@ export default function App() {
   )
   const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null)
   const [connected, setConnected] = useState(false)
+  const [token, setToken] = useState<string | null>(localStorage.getItem("cos_token"))
+  const [username, setUsername] = useState<string | null>(localStorage.getItem("cos_username"))
+
+  // Handle global 401 responses
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          handleLogout()
+        }
+        return Promise.reject(error)
+      }
+    )
+    return () => axios.interceptors.response.eject(interceptor)
+  }, [])
+
+  const handleLogin = (newToken: string, newUsername: string) => {
+    localStorage.setItem("cos_token", newToken)
+    localStorage.setItem("cos_username", newUsername)
+    setToken(newToken)
+    setUsername(newUsername)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("cos_token")
+    localStorage.removeItem("cos_username")
+    setToken(null)
+    setUsername(null)
+  }
 
   const navigate = (t: Tab) => {
     setTab(t)
@@ -32,15 +72,21 @@ export default function App() {
 
   useEffect(() => {
     const check = () => {
-      fetch("http://localhost:8000/status")
-        .then(r => r.json())
-        .then(d => { setBackendStatus(d); setConnected(true) })
-        .catch(() => setConnected(false))
+      // Only ping if we have a token
+      if (!token) return
+      
+      axios.get("http://localhost:8000/status")
+        .then(r => { setBackendStatus(r.data); setConnected(true) })
+        .catch(err => {
+          if (err.response?.status !== 401) {
+            setConnected(false)
+          }
+        })
     }
     check()
     const interval = setInterval(check, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [token])
 
   const flushDB = async () => {
     if (window.confirm("Are you sure you want to completely erase all memories? This cannot be undone.")) {
@@ -51,6 +97,10 @@ export default function App() {
         alert("Failed to flush database.")
       }
     }
+  }
+
+  if (!token) {
+    return <Login onLogin={handleLogin} />
   }
 
   return (
@@ -80,7 +130,7 @@ export default function App() {
           <div className="sidebar-status">
             <div className={`status-dot ${connected ? "online" : "offline"}`} />
             <span className="status-label">
-              {connected ? "Backend Active" : "Backend Offline"}
+              {connected ? `Active as @${username}` : "Backend Offline"}
             </span>
           </div>
           {backendStatus && (
@@ -100,6 +150,17 @@ export default function App() {
             onMouseOut={e => e.currentTarget.style.opacity = "0.7"}
           >
             Flush Database
+          </button>
+          
+          <button 
+            onClick={handleLogout}
+            style={{
+              background: "none", border: "none", color: "rgba(255,255,255,0.5)", 
+              fontSize: 12, marginTop: 12, cursor: "pointer", padding: 0,
+              fontFamily: "var(--font-mono)", textDecoration: "underline"
+            }}
+          >
+            Logout
           </button>
         </div>
       </aside>

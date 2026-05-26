@@ -77,9 +77,13 @@ async function sendVisit(tab: chrome.tabs.Tab, tabId: number) {
   }
 
   try {
+    const { cos_token } = await chrome.storage.local.get("cos_token")
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (cos_token) headers["Authorization"] = `Bearer ${cos_token}`
+
     await fetch(`${BACKEND_URL}/capture`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(visit),
     })
   } catch (e) {
@@ -91,15 +95,19 @@ async function sendVisit(tab: chrome.tabs.Tab, tabId: number) {
 // Listen for selected text from content script
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === "SELECTED_TEXT" && sender.tab) {
-    // Update the last capture with selected text
-    fetch(`${BACKEND_URL}/capture/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: sender.tab.url,
-        timestamp: Date.now(),
-        selected_text: message.text,
-      }),
-    }).catch(() => {})
+    chrome.storage.local.get("cos_token", (res) => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (res.cos_token) headers["Authorization"] = `Bearer ${res.cos_token}`
+
+      fetch(`${BACKEND_URL}/capture/text`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          url: sender.tab!.url,
+          timestamp: Date.now(),
+          selected_text: message.text,
+        }),
+      }).catch(() => {})
+    })
   }
 })

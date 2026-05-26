@@ -3,16 +3,58 @@ import { useState, useEffect } from "react"
 export default function Popup() {
   const [status, setStatus] = useState<"connected" | "disconnected">("disconnected")
   const [count, setCount] = useState(0)
+  const [token, setToken] = useState<string | null>(null)
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch("http://localhost:8000/status")
-      .then(r => r.json())
+    chrome.storage.local.get(["cos_token"], (res) => {
+      if (res.cos_token) setToken(res.cos_token)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!token) return
+    fetch("http://localhost:8000/status", {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(r => {
+        if (r.status === 401) {
+          chrome.storage.local.remove("cos_token")
+          setToken(null)
+          throw new Error("Unauthorized")
+        }
+        return r.json()
+      })
       .then(data => {
         setStatus("connected")
         setCount(data.total_captures)
       })
       .catch(() => setStatus("disconnected"))
-  }, [])
+  }, [token])
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    const formData = new URLSearchParams()
+    formData.append("username", username)
+    formData.append("password", password)
+    
+    try {
+      const res = await fetch("http://localhost:8000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData
+      })
+      if (!res.ok) throw new Error("Login failed")
+      const data = await res.json()
+      chrome.storage.local.set({ cos_token: data.access_token })
+      setToken(data.access_token)
+    } catch (err) {
+      setError("Invalid credentials or backend offline")
+    }
+  }
 
   return (
     <div style={{ 
@@ -62,10 +104,32 @@ export default function Popup() {
         </h2>
       </div>
 
-      <div style={{ 
-        padding: "16px", borderRadius: 8, 
-        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)"
-      }}>
+      {!token ? (
+        <div>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 16 }}>
+            Login to link your browsing history to your core.
+          </p>
+          {error && <div style={{ color: "#e11d48", fontSize: 12, marginBottom: 10 }}>{error}</div>}
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <input 
+              type="text" value={username} onChange={e => setUsername(e.target.value)} 
+              placeholder="Username" 
+              style={{ padding: 8, background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", color: "white", borderRadius: 4 }} 
+            />
+            <input 
+              type="password" value={password} onChange={e => setPassword(e.target.value)} 
+              placeholder="Password" 
+              style={{ padding: 8, background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", color: "white", borderRadius: 4 }} 
+            />
+            <button type="submit" className="btn" style={{ marginTop: 5 }}>Authenticate</button>
+          </form>
+        </div>
+      ) : (
+        <>
+          <div style={{ 
+            padding: "16px", borderRadius: 8, 
+            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)"
+          }}>
         <div style={{ fontSize: 11, color: "rgba(150,180,200,0.5)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "'Geist Mono', monospace" }}>
           Engine Status
         </div>
@@ -84,9 +148,20 @@ export default function Popup() {
         )}
       </div>
 
-      <a href="http://localhost:5174" target="_blank" rel="noreferrer" className="btn">
-        Open Dashboard ↗
-      </a>
+          <a href="http://localhost:5173" target="_blank" rel="noreferrer" className="btn">
+            Open Dashboard ↗
+          </a>
+          <button 
+            onClick={() => { chrome.storage.local.remove("cos_token"); setToken(null); }}
+            style={{
+              background: "none", border: "none", color: "rgba(255,255,255,0.5)", 
+              fontSize: 11, marginTop: 12, cursor: "pointer", width: "100%", textDecoration: "underline"
+            }}
+          >
+            Logout Ext
+          </button>
+        </>
+      )}
     </div>
   )
 }

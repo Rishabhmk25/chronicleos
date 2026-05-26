@@ -48,17 +48,18 @@ export default function MemoryQA() {
     weekly: [],
   }
 
-  const submit = async () => {
-    if (mode !== "weekly" && !query.trim()) return
+  const submit = async (overrideQuery?: string) => {
+    const q = overrideQuery || query;
+    if (mode !== "weekly" && !q.trim()) return
     setLoading(true)
     setResult(null)
     setError(null)
     try {
       let r;
       if (mode === "ask") {
-        r = await axios.get(`http://localhost:8000/ask?q=${encodeURIComponent(query)}&level=${detailLevel}`)
+        r = await axios.get(`http://localhost:8000/ask?q=${encodeURIComponent(q)}&level=${detailLevel}`)
       } else if (mode === "reconstruct") {
-        r = await axios.get(`http://localhost:8000/reconstruct?topic=${encodeURIComponent(query)}`)
+        r = await axios.get(`http://localhost:8000/reconstruct?topic=${encodeURIComponent(q)}`)
       } else {
         r = await axios.get("http://localhost:8000/weekly")
       }
@@ -178,7 +179,7 @@ export default function MemoryQA() {
             <button
               key={i}
               className="example-chip"
-              onClick={() => { setQuery(ex); submit(); }}
+              onClick={() => { setQuery(ex); submit(ex); }}
             >
               ↗ {ex}
             </button>

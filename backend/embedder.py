@@ -4,6 +4,7 @@
 import chromadb
 import requests
 import os
+from functools import lru_cache
 from dotenv import load_dotenv
 from database import PageCapture
 
@@ -33,8 +34,11 @@ def get_embedding(text: str) -> list[float]:
     return response.json()["embeddings"][0]
 
 
-def get_query_embedding(text: str) -> list[float]:
-    """Separate task type for queries — improves retrieval quality."""
+@lru_cache(maxsize=128)
+def get_query_embedding(text: str) -> tuple:
+    """Separate task type for queries — improves retrieval quality.
+    Cached so the same query always returns the exact same embedding,
+    eliminating HNSW non-determinism from floating-point variance."""
     response = requests.post(
         NOMIC_URL,
         headers={"Authorization": f"Bearer {NOMIC_API_KEY}"},
@@ -42,7 +46,8 @@ def get_query_embedding(text: str) -> list[float]:
         timeout=30
     )
     response.raise_for_status()
-    return response.json()["embeddings"][0]
+    # Return as tuple for hashability (lru_cache requirement)
+    return tuple(response.json()["embeddings"][0])
 
 
 def build_document_text(capture: PageCapture) -> str:
@@ -72,6 +77,7 @@ def embed_and_store(capture: PageCapture):
             "domain": capture.domain or "",
             "timestamp": float(capture.timestamp),
             "cluster_id": int(capture.cluster_id) if capture.cluster_id is not None else -1,
+            "user_id": int(capture.user_id) if capture.user_id is not None else -1,
         }]
     )
 
@@ -90,7 +96,7 @@ def embed_all_pending(db_session):
             print(f"  ✗ Failed {capture.id}: {e}")
 
 
-def get_all_embeddings_for_clustering():
-    """Return all stored embeddings + IDs for DBSCAN clustering."""
-    results = collection.get(include=["embeddings", "metadatas"])
+def get_all_embeddings_for_clustering(user_id: int):
+    """Return all stored embeddings + IDs for DBSCAN clustering for a specific user."""
+    results = collection.get(where={"user_id": user_id}, include=["embeddings", "metadatas"])
     return results["ids"], results["embeddings"], results["metadatas"]
