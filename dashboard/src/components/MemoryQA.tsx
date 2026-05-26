@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 type Mode = "ask" | "reconstruct" | "weekly"
 
@@ -218,7 +220,9 @@ export default function MemoryQA() {
           {result.answer && (
             <div className="answer-box">
               <div className="answer-label">[ Memory Answer ]</div>
-              <p className="answer-text">{result.answer}</p>
+              <div className="answer-text markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.answer}</ReactMarkdown>
+              </div>
             </div>
           )}
 
@@ -270,7 +274,9 @@ export default function MemoryQA() {
             <div>
               <div className="answer-box">
                 <div className="answer-label">[ AI Weekly Summary ]</div>
-                <p className="answer-text">{result.summary}</p>
+                <div className="answer-text markdown-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.summary}</ReactMarkdown>
+                </div>
               </div>
 
               <div className="weekly-stat-row">
@@ -318,7 +324,9 @@ export default function MemoryQA() {
           {result.narrative && (
             <div className="answer-box">
               <div className="answer-label">[ Trail Narrative ]</div>
-              <p className="answer-text">{result.narrative}</p>
+              <div className="answer-text markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.narrative}</ReactMarkdown>
+              </div>
             </div>
           )}
 

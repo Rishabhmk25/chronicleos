@@ -1017,4 +1017,12 @@ a:hover {
   color: var(--amber);
   margin-bottom: 12px;
   display: block;
-}
+}/* Markdown Styles */
+.markdown-body { line-height: 1.6; }
+.markdown-body p { margin-bottom: 1em; }
+.markdown-body strong { font-weight: 600; color: var(--text-primary); }
+.markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1em; font-size: 14px; }
+.markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+.markdown-body th { background: rgba(255, 255, 255, 0.05); font-weight: 600; }
+.markdown-body ul, .markdown-body ol { margin-left: 20px; margin-bottom: 1em; }
+.markdown-body li { margin-bottom: 0.25em; }
