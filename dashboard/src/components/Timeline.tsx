@@ -2,11 +2,7 @@ import { useEffect, useState } from "react"
 import axios from "axios"
 import SessionCard from "./SessionCard"
 
-interface Page { url: string; title: string; timestamp: number; domain: string }
-interface Session {
-  id: number; label: string; start_time: number; end_time: number
-  page_count: number; cluster_id: number; pages: Page[]
-}
+import type { Session } from "../types"
 
 export default function Timeline() {
   const [sessions, setSessions] = useState<Session[]>([])

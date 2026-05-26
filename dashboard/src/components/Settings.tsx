@@ -106,7 +106,7 @@ export default function Settings() {
                 color: "white", fontSize: 14, outline: "none", boxSizing: "border-box"
               }}
             />
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 6, marginHeight: 0 }}>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 6, marginBottom: 0 }}>
               Powers Llama-3 background Knowledge Graph extraction, timeline clustering labels, and RAG synthesis.
             </p>
           </div>
@@ -134,7 +134,7 @@ export default function Settings() {
                 color: "white", fontSize: 14, outline: "none", boxSizing: "border-box"
               }}
             />
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 6, marginHeight: 0 }}>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 6, marginBottom: 0 }}>
               Generates high-performance 768-dimensional text embeddings stored directly inside pgvector.
             </p>
           </div>

@@ -1,3 +1,4 @@
+print("Starting ChronicleOS backend...")
 from fastapi import FastAPI, Depends, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -54,6 +55,8 @@ class Token(BaseModel):
 
 @app.on_event("startup")
 def startup():
+    print("Loading env...")
+    print("Connecting database...")
     init_db()
     print("ChronicleOS backend started. DB initialized.")
 

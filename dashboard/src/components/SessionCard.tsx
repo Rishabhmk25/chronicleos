@@ -2,11 +2,7 @@ import { useState } from "react"
 import { format } from "date-fns"
 import axios from "axios"
 
-interface Page { id: number; url: string; title: string; timestamp: number; domain: string }
-interface Session {
-  id: number; label: string; start_time: number; end_time: number
-  page_count: number; cluster_id: number; pages: Page[]
-}
+import type { Page, Session } from "../types"
 
 function faviconUrl(domain: string) {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
