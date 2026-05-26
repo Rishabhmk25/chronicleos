@@ -1,7 +1,7 @@
 // extension/background.ts
 // Listens to all tab activity, queues captures in-memory, and batches them to the backend.
 
-const DEFAULT_BACKEND_URL = "http://localhost:8000"
+const DEFAULT_BACKEND_URL = "https://chronicalos.onrender.com"
 
 interface PageVisit {
   url: string

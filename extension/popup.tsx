@@ -8,7 +8,7 @@ export default function Popup() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
 
-  const [backendUrl, setBackendUrl] = useState("http://localhost:8000")
+  const [backendUrl, setBackendUrl] = useState("https://chronicalos.onrender.com")
 
   useEffect(() => {
     chrome.storage.local.get(["cos_token", "cos_backend_url"], (res) => {

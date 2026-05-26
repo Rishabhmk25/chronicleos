@@ -408,9 +408,12 @@ def embed_capture_task(capture_id: int, groq_key: str | None = None, nomic_key: 
         if capture:
             embed_and_store(capture, nomic_key=nomic_key)
             
-            # Extract Graph RAG entities in background
+            # Extract Graph RAG entities in background (Wrap in try-except so Neo4j offline doesn't crash embedding)
             if capture.page_text:
-                extract_entities_and_relationships(capture.page_text, capture.url, groq_key=groq_key)
+                try:
+                    extract_entities_and_relationships(capture.page_text, capture.url, groq_key=groq_key)
+                except Exception as neo_err:
+                    print(f"Graph RAG skipped (Neo4j unreachable): {neo_err}")
                 
             capture.embedded = 1
             db.commit()
