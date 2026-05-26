@@ -11,7 +11,7 @@ graph TD
     Ext[Chrome Extension] -->|Queue & Batch Sync| API[FastAPI Backend]
     API -->|Dialect Dispatcher| DB[(Neon PostgreSQL / SQLite)]
     DB -->|pgvector / SQLiteVector| DB
-    API -->|NetworkX Graph Builder| Graph[graph.json]
+    API -->|Neo4j Graph Builder| Graph[(Neo4j AuraDB)]
     API -->|Synthesizer| LLM[Groq Llama-3.1 RAG]
     Dashboard[React Dashboard] -->|Stateless JWT API| API
     Ext -->|Auto-Sync Auth| Dashboard
@@ -34,7 +34,7 @@ graph TD
   - *SQLite Fallback*: Automatically serializes embeddings to a JSON-mapped `SQLiteVector` text column and applies a high-fidelity brute-force cosine match in Python using `numpy`.
 - **Stateless JWT Multi-Tenancy**: Secure `bcrypt` password hashing (bypassing passlib limits) and strict `user_id` context isolation. No user's semantic memory can contaminate another's.
 - **Automated Unsupervised Clustering**: DBSCAN algorithm merges temporal and semantic distance matrices to group related pages into cohesive "Sessions" (labeled via Groq Llama-3) using raw SQL bulk updates to prevent ORM identity map conflicts.
-- **Graph RAG (NetworkX)**: An asynchronous pipeline extracts entities and relationships in the background, building a multi-hop knowledge graph.
+- **Graph RAG (Neo4j)**: An asynchronous pipeline extracts entities and relationships in the background, building a multi-hop knowledge graph stored natively in Neo4j.
 
 ### React Dashboard (Vite + TailwindCSS)
 - **Vibrant Glassmorphism Interface**: Sleek dark mode featuring blur filters, harmonic radial gradients, and interactive micro-animations.
