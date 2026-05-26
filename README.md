@@ -51,6 +51,7 @@ graph TD
 ### Backend Deployment (Render or Fly.io)
 The backend is prepared for one-click deployment on **Render** (using `render.yaml`) or **Fly.io** (using `Procfile` and `fly.toml`).
 - Requires setting environment variables: `GROQ_API_KEY`, `NOMIC_API_KEY`, `DATABASE_URL` (your Neon URL), and `JWT_SECRET_KEY`.
+- For the Knowledge Graph to function in the cloud, you must also add your free AuraDB credentials: `NEO4J_URI`, `NEO4J_USER`, and `NEO4J_PASSWORD`.
 - *Note:* Due to Render's lack of outbound IPv6 support on the free tier, we strongly recommend **Neon Serverless Postgres** for the database as it provides native IPv4 connection strings with built-in `pgvector` support.
 
 ### Frontend Dashboard Deployment (Vercel)
@@ -69,6 +70,11 @@ The dashboard React SPA is ready for static deployment on **Vercel**.
    NOMIC_API_KEY=your_nomic_api_key
    JWT_SECRET_KEY=your_secure_random_signing_key
    DATABASE_URL=postgresql://user:password@host:port/dbname # Optional (defaults to SQLite fallback)
+   
+   # Graph RAG Database (Neo4j AuraDB)
+   NEO4J_URI=neo4j+s://your-instance.databases.neo4j.io
+   NEO4J_USER=neo4j
+   NEO4J_PASSWORD=your_neo4j_password
    ```
 2. Create a virtual environment and install dependencies:
    ```bash
