@@ -110,14 +110,7 @@ The dashboard React SPA is ready for static deployment on **Vercel**.
 3. Enable **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and select the `build/chrome-mv3-dev/` directory generated inside the extension folder.
 
----
 
-## 4. Verification & Diagnostics
-
-To run a full end-to-end integration test checking registration, auth headers, page capture, background vector embedding, SQL storage, exact hybrid similarity matching, and RAG answer synthesis, execute:
-```bash
-.venv\Scripts\python C:\Users\Lenovo\.gemini\antigravity-ide\scratch\test_flow.py
-```
 
 ## License
 MIT License.
