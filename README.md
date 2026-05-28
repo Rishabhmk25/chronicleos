@@ -46,18 +46,20 @@ graph TD
 
 ---
 
-## 2. Cloud Deployments Setup
+## 2. Cloud Deployments Setup (Render)
 
-### Backend Deployment (Render or Fly.io)
-The backend is prepared for one-click deployment on **Render** (using `render.yaml`) or **Fly.io** (using `Procfile` and `fly.toml`).
+### Backend Deployment
+The backend is prepared for one-click deployment as a Web Service on **Render** (using the included `render.yaml`).
 - Requires setting environment variables: `GROQ_API_KEY`, `NOMIC_API_KEY`, `DATABASE_URL` (your Neon URL), and `JWT_SECRET_KEY`.
 - For the Knowledge Graph to function in the cloud, you must also add your free AuraDB credentials: `NEO4J_URI`, `NEO4J_USER`, and `NEO4J_PASSWORD`.
 - *Note:* Due to Render's lack of outbound IPv6 support on the free tier, we strongly recommend **Neon Serverless Postgres** for the database as it provides native IPv4 connection strings with built-in `pgvector` support.
 
-### Frontend Dashboard Deployment (Vercel)
-The dashboard React SPA is ready for static deployment on **Vercel**.
-- Router redirects are configured in [vercel.json](file:///d:/ML/chronicalos/chronicleos/dashboard/vercel.json).
-- Axios is configured to dynamically target `import.meta.env.VITE_API_URL` or fallback to `http://localhost:8000`.
+### Frontend Dashboard Deployment
+The dashboard React SPA is ready for Static Site deployment on **Render**.
+- Set your Build Command to `pnpm install && pnpm build` (or npm equivalent).
+- Set your Publish Directory to `dist`.
+- Under advanced settings in Render, ensure you set rewrite rules to catch all routes (`/*`) and point them to `/index.html` to support React Router.
+- Set the environment variable `VITE_API_URL` to point to your deployed Render backend URL so Axios can dynamically connect to it.
 
 ---
 
