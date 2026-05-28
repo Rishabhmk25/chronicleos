@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client"
 import { getLayout } from "@plasmo-static-common/react"
 
 // @ts-ignore
-import * as Component from "../../popup.tsx"
+import * as Component from "../../popup.jsx"
 
 let __plasmoRoot: HTMLElement = null
 

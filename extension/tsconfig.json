@@ -5,10 +5,11 @@
   ],
   "include": [
     ".plasmo/index.d.ts",
-    "./**/*.ts",
-    "./**/*.tsx"
+    "./**/*.js",
+    "./**/*.jsx"
   ],
   "compilerOptions": {
+    "allowJs": true,
     "paths": {
       "~*": [
         "./src/*"
