@@ -112,6 +112,14 @@ The dashboard React SPA is ready for Static Site deployment on **Render**.
 3. Enable **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and select the `build/chrome-mv3-dev/` directory generated inside the extension folder.
 
+### Extension Production Packaging
+To build a highly optimized, production-ready `.zip` file of the extension for distribution or uploading to the Chrome Web Store:
+```bash
+cd extension
+pnpm package
+```
+*This outputs a `build/chrome-mv3-prod.zip` file containing the minified production code.*
+
 
 
 ## License

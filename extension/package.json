@@ -5,7 +5,8 @@
   "description": "Personal semantic memory engine",
   "scripts": {
     "dev": "plasmo dev",
-    "build": "plasmo build"
+    "build": "plasmo build",
+    "package": "plasmo build --zip"
   },
   "dependencies": {
     "plasmo": "0.89.2",
