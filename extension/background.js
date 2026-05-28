@@ -101,8 +101,16 @@ async function queueVisit(tab, tabId) {
 
   try {
     const urlObj = new URL(tab.url);
-    if (urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1")
-      return;
+    const host = urlObj.hostname;
+    const isDashboardOrBackend = 
+      host === "localhost" || 
+      host === "127.0.0.1" ||
+      host.includes("chronicalos.vercel.app") ||
+      host.includes("chronicleos.vercel.app") ||
+      host.includes("chronicalos.onrender.com") ||
+      host.includes("chronicleos.onrender.com");
+      
+    if (isDashboardOrBackend) return;
   } catch (e) {
     return; // Skip invalid URLs
   }

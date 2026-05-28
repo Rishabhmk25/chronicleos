@@ -21,8 +21,8 @@ graph TD
 
 ## 1. Features & Architectural Upgrades
 
-### Chrome Extension (Plasmo + React)
-- **Passive Memory Capture**: Silently captures tab activity, titles, domains, highlighted snippets, and full-page text content.
+### Chrome Extension (Plasmo + React + JavaScript)
+- **Passive Memory Capture**: Silently captures tab activity, titles, domains, highlighted snippets, and full-page text content. (Explicitly ignores `localhost`, `vercel.app`, and `onrender.com` dashboard URLs to prevent database noise).
 - **Queue-and-Batch Sync Pipeline**: Accumulates captures in-memory and flushes them to the backend periodically (every 15s or immediately on 5 captures) to prevent page-loading lag and API spam.
 - **Offline Network Resilience**: Automatically prepends failed batches back to the capture queue in case of connectivity loss.
 - **Single Sign-On (SSO) Auto-Sync**: Automatically detects the dashboard authentication state from active tabs and signs into the extension popup without manual input.
